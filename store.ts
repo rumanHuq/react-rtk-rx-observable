@@ -2,52 +2,48 @@ import {
   AnyAction,
   combineReducers,
   configureStore,
-  createSlice,
   Dispatch,
-  PayloadAction,
 } from '@reduxjs/toolkit';
 import { TypedUseSelectorHook, useDispatch, useSelector } from 'react-redux';
-import { createEpicMiddleware, Epic } from 'redux-observable';
-import { filter, map, delay, tap } from 'rxjs/operators';
+import { createEpicMiddleware, Epic, ofType } from 'redux-observable';
+import { map, delay, tap, take } from 'rxjs/operators';
+import {
+  counterReducer,
+  counterActions,
+  CounterActions,
+} from './store/counterSlice';
 
-export const counter = createSlice({
-  name: 'counter',
-  initialState: 0,
-  reducers: {
-    increment: (state, action: PayloadAction<number>) => state + action.payload,
-    decrement: (state, action: PayloadAction<number>) => state - action.payload,
-  },
-});
-export const { increment, decrement } = counter.actions;
-const reducer = combineReducers({
-  counter: counter.reducer,
-});
+interface RootActions extends CounterActions, AnyAction {}
 
-type Actions = {
-  [key in keyof typeof counter.actions]: typeof counter.actions[key];
+const reducer = {
+  counter: counterReducer,
 };
-interface MainActions extends Actions, AnyAction {}
-type mo = ReturnType<MainActions['increment']>;
+export type RootState = {
+  [key in keyof typeof reducer]: ReturnType<typeof reducer[key]>;
+};
 
-export type MyState = ReturnType<typeof reducer>;
-
-const countEpic = (action$) =>
-  action$.pipe(
-    filter<MainActions>(counter.actions.increment.match),
+const countEpic: Epic<AnyAction, AnyAction, RootState> = (action$) => {
+  return action$.pipe(
+    ofType(counterActions.increment.toString()),
     delay(500),
     tap(console.log),
-    map<mo, AnyAction>((action) => counter.actions.increment(action.payload))
+    map<ReturnType<RootActions['increment']>, AnyAction>((action) =>
+      counterActions.increment(action.payload)
+    ),
+    take(4)
   );
+};
 
-const epicMiddleware = createEpicMiddleware<AnyAction, AnyAction, MyState>();
+const epicMiddleware = createEpicMiddleware<AnyAction, AnyAction, RootState>();
 
 export const store = configureStore({
   reducer,
-  middleware: (getDefaultMiddleware) =>
-    getDefaultMiddleware({ thunk: false }).concat(epicMiddleware),
+  middleware(getDefaultMiddleware) {
+    return getDefaultMiddleware({ thunk: false }).concat(epicMiddleware);
+  },
 });
 
 epicMiddleware.run(countEpic);
 
 export const useAppDispatch = () => useDispatch<Dispatch>();
-export const useAppState: TypedUseSelectorHook<MyState> = useSelector;
+export const useAppState: TypedUseSelectorHook<RootState> = useSelector;
